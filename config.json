@@ -1,5 +1,5 @@
 {
-  "cache_time": 7200,
+  "cache_time": 60,
   "api_site": {
     "myselfBBS": {
       "api": "https://myself-bbs.vanisoul.com/api.php/provide/vod",
