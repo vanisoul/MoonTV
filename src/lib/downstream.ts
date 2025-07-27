@@ -1,6 +1,10 @@
 import { API_CONFIG, ApiSite, getConfig } from '@/lib/config';
 import { SearchResult } from '@/lib/types';
-import { cleanHtmlTags } from '@/lib/utils';
+import {
+  cleanHtmlTags,
+  convertToSimplified,
+  normalizeToTraditional,
+} from '@/lib/utils';
 
 interface ApiSearchItem {
   vod_id: string;
@@ -15,7 +19,13 @@ interface ApiSearchItem {
   type_name?: string;
 }
 
-export async function searchFromApi(
+/**
+ * 執行單一搜尋查詢
+ * @param apiSite API 站點
+ * @param query 搜尋查詢
+ * @returns 搜尋結果
+ */
+async function performSingleSearch(
   apiSite: ApiSite,
   query: string
 ): Promise<SearchResult[]> {
@@ -182,6 +192,66 @@ export async function searchFromApi(
     }
 
     return results;
+  } catch (error) {
+    return [];
+  }
+}
+
+/**
+ * 支援簡繁體的搜尋函式
+ * @param apiSite API 站點
+ * @param query 搜尋查詢
+ * @returns 搜尋結果（包含簡繁體搜尋）
+ */
+export async function searchFromApi(
+  apiSite: ApiSite,
+  query: string
+): Promise<SearchResult[]> {
+  try {
+    // 原始搜尋
+    const originalResults = await performSingleSearch(apiSite, query);
+
+    // 如果結果較少，嘗試簡繁體轉換搜尋
+    if (originalResults.length < 10) {
+      const queries = new Set([query]);
+
+      // 生成簡繁體變體
+      const traditionalQuery = normalizeToTraditional(query);
+      const simplifiedQuery = convertToSimplified(query);
+
+      if (traditionalQuery !== query) {
+        queries.add(traditionalQuery);
+      }
+      if (simplifiedQuery !== query) {
+        queries.add(simplifiedQuery);
+      }
+
+      // 如果有額外的查詢詞，執行搜尋
+      if (queries.size > 1) {
+        const additionalQueries = Array.from(queries).filter(
+          (q) => q !== query
+        );
+        const additionalSearchPromises = additionalQueries.map((q) =>
+          performSingleSearch(apiSite, q)
+        );
+
+        const additionalResults = await Promise.all(additionalSearchPromises);
+        const allResults = [originalResults, ...additionalResults].flat();
+
+        // 去重（基於 id + source）
+        const uniqueResults = new Map<string, SearchResult>();
+        allResults.forEach((result) => {
+          const key = `${result.source}-${result.id}`;
+          if (!uniqueResults.has(key)) {
+            uniqueResults.set(key, result);
+          }
+        });
+
+        return Array.from(uniqueResults.values());
+      }
+    }
+
+    return originalResults;
   } catch (error) {
     return [];
   }

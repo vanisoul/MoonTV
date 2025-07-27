@@ -13,6 +13,7 @@ import {
   subscribeToDataUpdates,
 } from '@/lib/db.client';
 import { SearchResult } from '@/lib/types';
+import { generateAggregationKey, isChineseTextMatch } from '@/lib/utils';
 
 import PageLayout from '@/components/PageLayout';
 import VideoCard from '@/components/VideoCard';
@@ -43,26 +44,24 @@ function SearchPageClient() {
     return getDefaultAggregate() ? 'agg' : 'all';
   });
 
-  // 聚合后的结果（按标题和年份分组）
+  // 聚合后的结果（按标题和年份分组，支援簡繁體）
   const aggregatedResults = useMemo(() => {
     const map = new Map<string, SearchResult[]>();
     searchResults.forEach((item) => {
-      // 使用 title + year + type 作为键，year 必然存在，但依然兜底 'unknown'
-      const key = `${item.title.replaceAll(' ', '')}-${
-        item.year || 'unknown'
-      }-${item.episodes.length === 1 ? 'movie' : 'tv'}`;
+      // 使用標準化函式生成聚合鍵值，支援簡繁體聚合
+      const key = generateAggregationKey(
+        item.title,
+        item.year || 'unknown',
+        item.episodes.length
+      );
       const arr = map.get(key) || [];
       arr.push(item);
       map.set(key, arr);
     });
     return Array.from(map.entries()).sort((a, b) => {
-      // 优先排序：标题与搜索词完全一致的排在前面
-      const aExactMatch = a[1][0].title
-        .replaceAll(' ', '')
-        .includes(searchQuery.trim().replaceAll(' ', ''));
-      const bExactMatch = b[1][0].title
-        .replaceAll(' ', '')
-        .includes(searchQuery.trim().replaceAll(' ', ''));
+      // 优先排序：标题與搜索詞簡繁體匹配的排在前面
+      const aExactMatch = isChineseTextMatch(searchQuery.trim(), a[1][0].title);
+      const bExactMatch = isChineseTextMatch(searchQuery.trim(), b[1][0].title);
 
       if (aExactMatch && !bExactMatch) return -1;
       if (!aExactMatch && bExactMatch) return 1;
@@ -87,7 +86,7 @@ function SearchPageClient() {
         }
       }
     });
-  }, [searchResults]);
+  }, [searchResults, searchQuery]);
 
   useEffect(() => {
     // 无搜索参数时聚焦搜索框
@@ -130,9 +129,9 @@ function SearchPageClient() {
       const data = await response.json();
       setSearchResults(
         data.results.sort((a: SearchResult, b: SearchResult) => {
-          // 优先排序：标题与搜索词完全一致的排在前面
-          const aExactMatch = a.title === query.trim();
-          const bExactMatch = b.title === query.trim();
+          // 优先排序：标题與搜索詞簡繁體匹配的排在前面
+          const aExactMatch = isChineseTextMatch(query.trim(), a.title);
+          const bExactMatch = isChineseTextMatch(query.trim(), b.title);
 
           if (aExactMatch && !bExactMatch) return -1;
           if (!aExactMatch && bExactMatch) return 1;

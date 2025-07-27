@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any,no-console */
 
 import Hls from 'hls.js';
+import { Converter } from 'opencc-js';
 
 /**
  * 获取图片代理 URL 设置
@@ -206,4 +207,93 @@ export async function getVideoResolutionFromM3u8(m3u8Url: string): Promise<{
       }`
     );
   }
+}
+
+// 初始化 OpenCC 轉換器
+const simplifiedToTraditional = Converter({ from: 'cn', to: 'tw' });
+const traditionalToSimplified = Converter({ from: 'tw', to: 'cn' });
+
+/**
+ * 將文字標準化為繁體中文（用於聚合比較）
+ * @param text 原始文字
+ * @returns 標準化後的繁體文字
+ */
+export function normalizeToTraditional(text: string): string {
+  if (!text) return text;
+  return simplifiedToTraditional(text);
+}
+
+/**
+ * 將文字轉換為簡體中文
+ * @param text 原始文字
+ * @returns 轉換後的簡體文字
+ */
+export function convertToSimplified(text: string): string {
+  if (!text) return text;
+  return traditionalToSimplified(text);
+}
+
+/**
+ * 標準化文字用於比對（移除空格、轉小寫、轉簡體）
+ * @param text 原始文字
+ * @returns 標準化後的文字
+ */
+export function normalizeTextForComparison(text: string): string {
+  if (!text) return text;
+  const r = convertToSimplified(text)
+    .replaceAll(' ', '')
+    .replaceAll('　', '') // 全形空格
+    .replaceAll('，', '')
+    .toLowerCase();
+  return r;
+}
+
+/**
+ * 生成用於聚合的標準化鍵值
+ * @param title 標題
+ * @param year 年份
+ * @param episodeCount 集數
+ * @returns 標準化的聚合鍵值
+ */
+export function generateAggregationKey(
+  title: string,
+  year: string,
+  episodeCount: number
+): string {
+  const normalizedTitle = normalizeTextForComparison(title);
+  const type = episodeCount === 1 ? 'movie' : 'tv';
+  return `${normalizedTitle}-${year || 'unknown'}-${type}`;
+}
+
+/**
+ * 檢查兩個標題是否為簡繁體對應
+ * @param title1 標題1
+ * @param title2 標題2
+ * @returns 是否為簡繁體對應
+ */
+export function isSameContentInDifferentScript(
+  title1: string,
+  title2: string
+): boolean {
+  if (!title1 || !title2) return false;
+
+  const normalized1 = normalizeTextForComparison(title1);
+  const normalized2 = normalizeTextForComparison(title2);
+
+  return normalized1 === normalized2;
+}
+
+/**
+ * 檢查兩個文字是否為完全相同的簡繁體對應（完全匹配）
+ * @param text1 文字1
+ * @param text2 文字2
+ * @returns 是否為完全相同的簡繁體對應
+ */
+export function isChineseTextMatch(text1: string, text2: string): boolean {
+  if (!text1 || !text2) return false;
+
+  const normalized1 = normalizeTextForComparison(text1);
+  const normalized2 = normalizeTextForComparison(text2);
+
+  return normalized1 === normalized2;
 }
